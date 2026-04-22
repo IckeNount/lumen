@@ -1,0 +1,50 @@
+# Lumen — production AI research co-pilot (Python 3.11–3.12; see README)
+# Pin ranges balance reproducibility with security patches; lock in deployment.
+
+# LLM providers (direct SDK usage; no orchestration framework required)
+openai>=1.40.0,<2
+anthropic>=0.34.0,<1
+
+# HTTP client (fetch layer, provider calls, retries)
+httpx>=0.27.0,<1
+
+# Configuration & validation
+pydantic>=2.8.0,<3
+pydantic-settings>=2.4.0,<3
+python-dotenv>=1.0.1,<2
+
+# Tokenization (manual counts, cost estimation)
+tiktoken>=0.7.0,<1
+
+# Vector store — local-first (inspectable before hosted).
+# Use Python 3.11 or 3.12 for reliable wheels; 3.13+ may fail to build `chroma-hnswlib` on some macOS toolchains.
+chromadb>=0.5.16,<0.6
+
+# Web search API (choose one; both wired in config)
+tavily-python>=0.5.0,<1
+
+# Observability / tracing
+langsmith>=0.1.99,<1
+
+# API surface (week 4; imported early for typing consistency)
+fastapi>=0.115.0,<1
+uvicorn[standard]>=0.30.0,<1
+
+# HTML extraction / cleaning (fetch → text)
+beautifulsoup4>=4.12.0,<5
+lxml>=5.0.0,<6
+trafilatura>=1.6.0,<2
+
+# Numerics (embeddings, eval metrics)
+numpy>=1.26.0,<3
+
+# Notebooks — sandbox before production code
+jupyter>=1.0.0,<2
+ipykernel>=6.29.0,<7
+
+# Tests
+pytest>=8.0.0,<9
+pytest-asyncio>=0.24.0,<1
+
+# Lint / format (optional locally; CI can add ruff later)
+# ruff>=0.6.0
