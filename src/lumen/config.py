@@ -1,9 +1,7 @@
 """Validated environment and defaults for Lumen (pydantic-settings)."""
 
 from functools import lru_cache
-from typing import Literal
-
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,17 +14,20 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # LLM
+    # LLM — OpenAI SDK; point OPENAI_BASE_URL at OpenRouter for freemium use
     openai_api_key: str | None = Field(default=None, validation_alias="OPENAI_API_KEY")
-    anthropic_api_key: str | None = Field(default=None, validation_alias="ANTHROPIC_API_KEY")
-    lumen_llm_provider: Literal["openai", "anthropic"] = Field(
-        default="openai",
-        validation_alias="LUMEN_LLM_PROVIDER",
+    openai_base_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("OPENAI_BASE_URL", "LUMEN_OPENAI_BASE_URL"),
     )
-    lumen_chat_model: str = Field(default="gpt-4o-mini", validation_alias="LUMEN_CHAT_MODEL")
+    lumen_chat_model: str = Field(default="openrouter/auto:free", validation_alias="LUMEN_CHAT_MODEL")
     lumen_embedding_model: str = Field(
         default="text-embedding-3-small",
         validation_alias="LUMEN_EMBEDDING_MODEL",
+    )
+    lumen_use_mock_embeddings: bool = Field(
+        default=False,
+        validation_alias="LUMEN_USE_MOCK_EMBEDDINGS",
     )
 
     # Search

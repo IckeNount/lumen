@@ -1,17 +1,19 @@
 """
-ChromaDB persistence: one collection per session or namespaced ids (week 2).
+ChromaDB persistence: one collection per session or namespaced ids.
 
-Failure modes to document in wiki: empty collection, stale embeddings, wrong metric.
+Failure modes: empty collection, stale embeddings, wrong metric.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+import chromadb
 
-def get_client(persist_directory: str) -> Any:
-    """Return a Chroma PersistentClient — implementation in week 2."""
-    raise NotImplementedError("Week 2: chromadb.PersistentClient + collection lifecycle.")
+
+def get_client(persist_directory: str) -> chromadb.PersistentClient:
+    """Return a Chroma PersistentClient."""
+    return chromadb.PersistentClient(path=persist_directory)
 
 
 def upsert_chunks(
@@ -20,6 +22,10 @@ def upsert_chunks(
     embeddings: list[list[float]],
     documents: list[str],
     metadatas: list[dict[str, Any]] | None = None,
+    *,
+    persist_directory: str,
 ) -> None:
     """Add or update chunks with metadata for attribution."""
-    raise NotImplementedError("Week 2: batch upsert + idempotency.")
+    client = get_client(persist_directory)
+    coll = client.get_or_create_collection(name=collection_name)
+    coll.upsert(ids=ids, embeddings=embeddings, documents=documents, metadatas=metadatas)

@@ -51,6 +51,11 @@ htmlcov/
 *.log
 logs/
 
+# Frontend
+node_modules/
+frontend/dist/
+frontend/coverage/
+
 # Model caches (if any local downloads)
 .cache/
 models/

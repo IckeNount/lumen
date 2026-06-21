@@ -41,11 +41,15 @@ def main() -> int:
 
     print(f"ok: lumen package version {lumen.__version__}")
 
-    key = os.environ.get("OPENAI_API_KEY")
-    if key:
+    if os.environ.get("OPENAI_API_KEY"):
         print("ok: OPENAI_API_KEY is set (length hidden)")
     else:
-        print("note: OPENAI_API_KEY not set — required for notebook API calls.")
+        print("note: OPENAI_API_KEY not set — optional if you use DeepSeek for chat.")
+
+    if os.environ.get("DEEPSEEK_API_KEY"):
+        print("ok: DEEPSEEK_API_KEY is set (length hidden)")
+    else:
+        print("note: DEEPSEEK_API_KEY not set — optional unless LUMEN_LLM_PROVIDER=deepseek.")
 
     return 0
 
