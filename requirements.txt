@@ -30,6 +30,9 @@ langsmith>=0.1.99,<1
 fastapi>=0.115.0,<1
 uvicorn[standard]>=0.30.0,<1
 
+# Local host integration — thin stdio MCP adapter
+mcp>=2.0.0,<3
+
 # HTML extraction / cleaning (fetch → text)
 beautifulsoup4>=4.12.0,<5
 lxml>=5.0.0,<6
