@@ -5,7 +5,11 @@ from __future__ import annotations
 import hashlib
 import math
 import struct
+from functools import lru_cache
 from typing import TYPE_CHECKING
+
+from chromadb.api.types import EmbeddingFunction
+from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
 
 if TYPE_CHECKING:
     from lumen.config import Settings
@@ -15,6 +19,18 @@ from lumen.llm.openai_compat import openai_client_for_embeddings
 
 # text-embedding-3-small default dimension
 _EMBEDDING_DIM = 1536
+
+
+@lru_cache(maxsize=1)
+def _local_embedding_function() -> EmbeddingFunction[list[str]]:
+    return ONNXMiniLM_L6_V2(preferred_providers=["CPUExecutionProvider"])
+
+
+def embed_texts_locally(texts: list[str]) -> list[list[float]]:
+    """Embed text with Chroma's local ONNX MiniLM model."""
+    if not texts:
+        return []
+    return [[float(value) for value in vector] for vector in _local_embedding_function()(texts)]
 
 
 def _mock_embedding_vector(text: str, dim: int = _EMBEDDING_DIM) -> list[float]:
