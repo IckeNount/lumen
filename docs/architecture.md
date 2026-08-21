@@ -1,78 +1,143 @@
 # Lumen architecture
 
-## Overview
+## Canonical architecture
 
-Lumen turns a natural-language research question into a short evidence-backed report. The data flow is linear with a feedback loop only at evaluation time (week 3).
+Lumen's default architecture is an evidence boundary between a ChatGPT-authenticated Codex host and local research infrastructure. Lumen finds, extracts, retrieves, and hardens evidence. The host model interprets that evidence and produces the final answer.
 
 ```mermaid
 flowchart LR
-  subgraph api [API]
-    HTTP[FastAPI]
-  end
-  subgraph pipeline [Pipeline]
-    D[Decompose]
-    S[Search]
-    F[Fetch]
-    C[Chunk]
-    E[Embed]
-    R[Retrieve]
-    X[Contradictions]
-    Y[Synthesize]
-  end
-  subgraph store [Storage]
-    Ch[Chroma per session]
-  end
-  HTTP --> D --> S --> F --> C --> E --> Ch
-  Ch --> R --> X
-  R --> Y
-  X --> Y
-  HTTP --> Y
+  H[Codex / ChatGPT-authenticated host]
+  M[Local stdio MCP]
+  T[research_evidence]
+  S[Search]
+  F[Fetch and extract]
+  C[Chunk]
+  E[Local semantic embeddings]
+  DB[(Run-scoped Chroma)]
+  R[Retrieve]
+  D[Deterministic evidence hardening]
+  O[Structured evidence and uncertainty]
+  Y[Host model synthesis]
+
+  H --> M --> T --> S --> F --> C --> E --> DB --> R --> D --> O --> Y
 ```
 
-## Components
+The host is authenticated through its ChatGPT sign-in. The local stdio server does not authenticate against ChatGPT, and `research_evidence` does not call a language model. Consequently, the canonical flow does not require an OpenAI API key inside Lumen. Optional search credentials belong to Lumen because search and acquisition remain Lumen responsibilities.
 
-### Pipeline
+## Responsibility boundary
 
-| Stage | Module | Role |
-|-------|--------|------|
-| Decompose | `pipeline/decompose.py` | Split the question into sub-queries (LLM JSON, or single query on Anthropic / missing client). |
-| Search | `pipeline/search.py` | Tavily → Serper → deterministic demo URL if no API keys. |
-| Fetch | `pipeline/fetch.py` | httpx GET + trafilatura extract; size-capped body. |
-| Chunk | `pipeline/chunk.py` | Sliding window with overlap; stable `chunk_id` per URL. |
-| Embed | `pipeline/embed.py` | OpenAI embeddings when `OPENAI_API_KEY` is set and `LUMEN_USE_MOCK_EMBEDDINGS=false`; otherwise deterministic mock vectors (1536-d) for local demos (e.g. DeepSeek-only chat). |
-| Retrieve | `pipeline/retrieve.py` | Chroma cosine/L2 query; returns scored passages. |
-| Contradictions | `pipeline/contradictions.py` | LLM JSON pass over passage pairs (skipped for Anthropic provider today). |
-| Synthesize | `pipeline/synthesize.py` | Chat completion with citations; `iter_synthesize_report` streams deltas. |
-| Orchestrate | `pipeline/orchestrator.py` | `_prepare` runs ingest; `run_research` / `iter_research_report_markdown` consume prepared passages. |
+| Owner | Responsibilities |
+| --- | --- |
+| Codex host | Connect to the local MCP server, choose when to call `research_evidence`, reason over returned passages, respect uncertainty, cite sources, and synthesize the answer. |
+| Lumen MCP adapter | Expose the typed `health` and `research_evidence` tools over stdio and translate the evidence dataclasses into structured MCP content. |
+| Lumen evidence pipeline | Search, fetch, extract, chunk, embed locally, store a run-scoped index, retrieve, deduplicate, order, attribute, and report deterministic evidence gaps. |
 
-### Retrieval
+The adapter in `src/lumen/mcp_server.py` remains thin. Business logic lives in `src/lumen/pipeline/evidence.py`; no search, ranking, or synthesis behavior is duplicated at the protocol boundary.
 
-`retrieval/chroma_store.py` wraps `chromadb.PersistentClient` under `CHROMA_PERSIST_DIRECTORY`. Each run uses `CHROMA_COLLECTION_PREFIX` + sanitized `session_id` as the collection name.
+## Evidence path
 
-### API
+| Stage | Implementation | Current behavior |
+| --- | --- | --- |
+| MCP | `mcp_server.py` | Runs over local stdio and exposes exactly `health` and `research_evidence`. |
+| Search | `pipeline/search.py` | Uses Tavily first, Serper second, or one fixed Python-license demo hit when neither key is present. |
+| Fetch/extract | `pipeline/fetch.py` | Fetches with `httpx`, follows redirects, caps response bytes, and extracts main text with Trafilatura. |
+| Chunk | `pipeline/chunk.py` | Creates overlapping character chunks with URL-derived stable chunk IDs and source metadata. |
+| Embed | `pipeline/embed.py` | `research_evidence` uses the local Chroma ONNX MiniLM embedding function for documents and query text. |
+| Store | `retrieval/chroma_store.py` | Persists vectors and provenance in local Chroma. |
+| Retrieve | `pipeline/retrieve.py` | Queries Chroma and converts L2 distance to the response score `1 / (1 + distance)`. |
+| Harden | `pipeline/evidence.py` | Canonicalizes URLs, removes duplicate sources, applies deterministic source-type adjustments for ordering, assigns `S1...Sn`, and adds evidence-gap signals. |
 
-`api/app.py` exposes:
+`research_evidence(question, session_id=None, max_sources=5)` validates a non-empty question and accepts 1 through 10 sources. It performs one search using the original question. For each call it creates a unique collection name derived from the configured prefix, optional sanitized session ID, and a random suffix. This makes retrieval state run-scoped even when callers reuse a session ID.
 
-- `GET /health` — liveness.
-- `POST /api/v1/research` — full JSON result (`report_markdown`, `citations`, `contradictions`, `uncertainty_notes`).
-- `POST /api/v1/research/stream` — NDJSON stream: `{"type":"meta",...}`, repeated `{"type":"token","text":"..."}`, then `{"type":"done"}`.
+The Chroma client is persistent, so run scoping prevents cross-run retrieval but does not delete old collections. Collection retention and cleanup are deferred operational work.
 
-### Observability
+## Evidence contract
 
-LangSmith env vars are present in settings for week 3; pipeline stages do not yet emit traces.
+The public MCP result is structured content equivalent to:
 
-## Failure modes
+```json
+{
+  "question": "How do plants store energy from sunlight?",
+  "evidence": [
+    {
+      "source_id": "S1",
+      "url": "https://example.com/photosynthesis",
+      "text": "Plants convert sunlight into chemical energy...",
+      "score": 0.73
+    }
+  ],
+  "uncertainty": []
+}
+```
 
-- **Search:** No keys → single demo hit (Python license doc); answers are toy-level unless Tavily/Serper is configured.
-- **Fetch:** robots, TLS errors, or empty extraction → URL skipped; noted in `uncertainty_notes`.
-- **Embeddings:** DeepSeek chat does not supply OpenAI embeddings — use `LUMEN_USE_MOCK_EMBEDDINGS=true` or set `OPENAI_API_KEY` for real vectors.
-- **Chroma:** Empty collection after failed fetches → “No sources available…” response.
-- **LLM:** `LUMEN_LLM_PROVIDER=anthropic` is not wired for chat in this vertical slice; use `openai` or `deepseek`.
+`source_id` is stable only within one response. `url` is canonicalized by removing fragments and common tracking parameters, lowercasing scheme/host, normalizing an empty path, and preserving meaningful query parameters. `score` remains the raw retrieval score; deterministic source-type adjustments affect ordering only and are not presented as a new confidence score.
 
-## Cost and latency budget
+The hardening pass keeps the highest-scoring retrieved passage for each canonical URL. It then sorts unique sources using the raw semantic score plus a small URL-derived adjustment: government sources receive `+0.05`, academic and selected research hosts `+0.03`, and Wikipedia `-0.03`.
 
-Dominant costs: search API calls × sub-queries, fetched bytes, embedding token count, retrieval window size (`LUMEN_MAX_RETRIEVAL_CHUNKS`), and synthesis `max_tokens`. Tune `max_subqueries`, `_MAX_FETCH_URLS`, and `LUMEN_MAX_RETRIEVAL_CHUNKS` before production.
+Deterministic uncertainty can report:
 
-## Security boundaries
+- Individual fetch failures or empty extracted text.
+- No source text available for retrieval.
+- No relevant evidence retrieved.
+- A question location that does not appear in any returned passage.
+- Evidence from fewer than two domains.
+- A best raw semantic score below `0.45`.
 
-API keys never leave server env; session ids must be treated as untrusted strings (sanitized for collection names). Fetch layer should stay behind size limits and user-agent identification; week 4 should add auth on `/api/v1/*` and rate limits.
+These signals identify obvious evidence gaps; they are not model judgments or calibrated probabilities.
+
+## Failure boundaries
+
+- Search exceptions become actionable `EvidencePipelineError` failures labeled `search`.
+- A failure to fetch one URL is recorded in `uncertainty`; the run continues with other sources.
+- Embedding failures become `EvidencePipelineError` failures labeled `embedding`.
+- Chroma upsert or retrieval failures become `EvidencePipelineError` failures labeled `retrieval`.
+- If all source acquisition fails, the tool returns an empty evidence list plus uncertainty rather than inventing an answer.
+- Input validation rejects blank questions and `max_sources` outside 1 through 10.
+
+The MCP SDK transports uncaught tool exceptions to the host as tool errors. Host synthesis should stop or narrow its claims when evidence is empty, failed, geographically mismatched, low-scoring, or insufficiently diverse.
+
+## Secondary and legacy interface
+
+FastAPI is preserved as a secondary interface in `src/lumen/api/app.py`:
+
+- `GET /health`
+- `POST /api/v1/research`
+- `POST /api/v1/research/stream`
+
+The React Research Console consumes this interface. This older path uses `pipeline/orchestrator.py`, has a reusable session-named Chroma collection, and includes decomposition, contradiction detection, and report synthesis through an OpenAI-compatible chat client. It is separate from `research_evidence`, does not inherit the Codex host's ChatGPT authentication, and is not the default architecture.
+
+Keeping FastAPI avoids breaking the existing frontend and API consumers. New evidence-host integration should target MCP unless compatibility with an existing HTTP consumer is required.
+
+## Implemented versus deferred
+
+### Implemented and regression-covered
+
+- Local semantic retrieval ranks a relevant fixture above an unrelated fixture.
+- Evidence hardening deduplicates canonical sources, applies the deterministic ordering rule, and emits tested gap signals.
+- An in-memory MCP client discovers exactly two tools and verifies the `research_evidence` structured-content contract.
+- FastAPI health, chunking, legacy mock embeddings, configuration, and the existing citation helper have targeted tests.
+- The secondary frontend has component/unit tests and a production build command.
+
+### Deferred production work
+
+- The evaluation runner is intentionally incomplete; seed questions and a citation helper do not constitute a completed evaluation suite.
+- Production tracing and observability are not implemented.
+- The deployment descriptors have not been verified against a live public service.
+- Public authentication, authorization, rate limiting, Chroma lifecycle management, secret management, and production monitoring are not complete.
+- The pipeline does not yet provide production crawling, caching, comprehensive retry policy, or search-service failover beyond its current fixed priority.
+
+No claim in this document implies completed evaluation, production readiness, or a verified deployment.
+
+## Regression gates
+
+The frozen architecture is checked with:
+
+```bash
+.venv/bin/pytest -q
+.venv/bin/pytest -q tests/test_mcp_server.py
+cd frontend && npm test -- --run
+cd frontend && npm run build
+git diff --check
+```
+
+The contract test is deterministic and replaces network activity at the MCP boundary. A separate manual end-to-end demonstration should launch the real `lumen.mcp_server` subprocess over stdio and call `research_evidence` without replacing search, fetch, embeddings, or Chroma.
