@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from uuid import uuid4
 
 if TYPE_CHECKING:
@@ -14,9 +15,16 @@ from lumen.config import get_settings
 from lumen.pipeline.chunk import Chunk, chunk_document
 from lumen.pipeline.embed import embed_texts_locally
 from lumen.pipeline.fetch import fetch_url
-from lumen.pipeline.retrieve import retrieve
+from lumen.pipeline.retrieve import RetrievedPassage, retrieve
 from lumen.pipeline.search import search_web
 from lumen.retrieval.chroma_store import upsert_chunks
+
+_LOW_CONFIDENCE_SCORE = 0.45
+_TRACKING_QUERY_KEYS = {"fbclid", "gclid", "mc_cid", "mc_eid"}
+_LOCATION_HINT = re.compile(
+    r"\b(?:in|within|across|from)\s+(?:the\s+)?"
+    r"([A-Z][A-Za-z'-]*(?:\s+[A-Z][A-Za-z'-]*){0,2})(?=[?.,!]|$)"
+)
 
 
 @dataclass(frozen=True)
@@ -52,6 +60,96 @@ def _run_collection_name(session_id: str | None, prefix: str) -> str:
     return f"{safe_prefix}_evidence_{safe_session}_{uuid4().hex[:8]}"[:63]
 
 
+def _canonical_url(url: str) -> str:
+    """Normalize source identity while preserving meaningful query parameters."""
+    parts = urlsplit(url.strip())
+    query = urlencode(
+        sorted(
+            (key, value)
+            for key, value in parse_qsl(parts.query, keep_blank_values=True)
+            if not key.casefold().startswith("utm_")
+            and key.casefold() not in _TRACKING_QUERY_KEYS
+        )
+    )
+    path = parts.path.rstrip("/") or "/"
+    return urlunsplit(
+        (parts.scheme.casefold(), parts.netloc.casefold(), path, query, "")
+    )
+
+
+def _source_strength_adjustment(url: str) -> float:
+    """Return a small deterministic ranking adjustment from obvious URL types."""
+    host = (urlsplit(url).hostname or "").casefold()
+    if host.endswith(".gov") or ".gov." in host:
+        return 0.05
+    if host.endswith(".edu") or ".edu." in host or ".ac." in host:
+        return 0.03
+    if host == "doi.org" or host.endswith(".ncbi.nlm.nih.gov"):
+        return 0.03
+    if host == "wikipedia.org" or host.endswith(".wikipedia.org"):
+        return -0.03
+    return 0.0
+
+
+def _build_evidence(passages: list[RetrievedPassage]) -> list[EvidencePassage]:
+    """Deduplicate passages by canonical source and rank unique evidence."""
+    strongest_by_url: dict[str, RetrievedPassage] = {}
+    for passage in passages:
+        canonical_url = _canonical_url(passage.source_url)
+        current = strongest_by_url.get(canonical_url)
+        if current is None or passage.score > current.score:
+            strongest_by_url[canonical_url] = passage
+
+    ranked = sorted(
+        strongest_by_url.items(),
+        key=lambda item: (
+            -(item[1].score + _source_strength_adjustment(item[0])),
+            -item[1].score,
+            item[0],
+        ),
+    )
+    return [
+        EvidencePassage(
+            source_id=f"S{index}",
+            url=canonical_url,
+            text=passage.text,
+            score=passage.score,
+        )
+        for index, (canonical_url, passage) in enumerate(ranked, start=1)
+    ]
+
+
+def _evidence_gap_uncertainty(
+    question: str, evidence: list[EvidencePassage]
+) -> list[str]:
+    """Describe obvious evidence gaps without asking a model to interpret them."""
+    if not evidence:
+        return ["No relevant evidence was retrieved."]
+
+    signals: list[str] = []
+    location_matches = _LOCATION_HINT.findall(question)
+    if location_matches:
+        location = location_matches[-1]
+        if all(location.casefold() not in item.text.casefold() for item in evidence):
+            signals.append(
+                f"Location mismatch: retrieved evidence does not mention {location}."
+            )
+
+    domains = {
+        urlsplit(item.url).hostname
+        for item in evidence
+        if urlsplit(item.url).hostname
+    }
+    if len(domains) < 2:
+        signals.append(
+            "Insufficient source diversity: evidence comes from fewer than two domains."
+        )
+
+    if max(item.score for item in evidence) < _LOW_CONFIDENCE_SCORE:
+        signals.append("Low retrieval confidence: best semantic score is below 0.45.")
+    return signals
+
+
 def research_evidence(
     question: str,
     *,
@@ -77,9 +175,10 @@ def research_evidence(
     urls: list[str] = []
     seen_urls: set[str] = set()
     for hit in hits:
-        if hit.url and hit.url not in seen_urls:
-            seen_urls.add(hit.url)
-            urls.append(hit.url)
+        canonical_url = _canonical_url(hit.url) if hit.url else ""
+        if canonical_url and canonical_url not in seen_urls:
+            seen_urls.add(canonical_url)
+            urls.append(canonical_url)
         if len(urls) >= max_sources:
             break
 
@@ -127,13 +226,6 @@ def research_evidence(
     except Exception as exc:
         raise EvidencePipelineError("retrieval", str(exc)) from exc
 
-    evidence = [
-        EvidencePassage(
-            source_id=f"S{index}",
-            url=passage.source_url,
-            text=passage.text,
-            score=passage.score,
-        )
-        for index, passage in enumerate(passages, start=1)
-    ]
+    evidence = _build_evidence(passages)
+    uncertainty.extend(_evidence_gap_uncertainty(query, evidence))
     return EvidenceResult(question=query, evidence=evidence, uncertainty=uncertainty)
