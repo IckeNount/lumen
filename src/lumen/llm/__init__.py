@@ -1,4 +1,4 @@
-"""LLM client factories (OpenAI-compatible: OpenAI, DeepSeek, Azure-style base URLs)."""
+"""OpenAI-compatible client support for the secondary FastAPI pipeline."""
 
 from __future__ import annotations
 

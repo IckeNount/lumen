@@ -18,10 +18,10 @@ The local MCP evidence path is implemented and covered by regression tests. Fast
 
 ### Deferred production work
 
-- A complete evaluation runner and representative quality baselines. The repository currently has seed questions and one small citation metric helper, not a completed evaluation system.
+- A complete evaluation runner and representative quality baselines are not included.
 - Production observability and distributed tracing.
 - Authentication and authorization for public service access, rate limiting, retention/cleanup policies for Chroma collections, and broader operational hardening.
-- A verified hosted deployment. The files under `infra/` are preliminary descriptors only.
+- Hosted deployment configuration and verification.
 - Production-scale crawling, caching, retries, and search-provider resilience.
 
 Host-model synthesis is intentionally outside Lumen's canonical MCP tool. It is an architectural boundary, not a missing MCP feature.
@@ -131,9 +131,7 @@ The API exposes `GET /health`, `POST /api/v1/research`, and `POST /api/v1/resear
 | `src/lumen/api/` | Secondary FastAPI interface. |
 | `frontend/` | Secondary React Research Console. |
 | `tests/` | Unit, retrieval, API-health, and MCP-contract regression tests. |
-| `evaluation/` | Seed evaluation data and incomplete evaluation scaffolding. |
-| `infra/` | Unverified deployment descriptors. |
-| `docs/` | Architecture and project documentation. |
+| `docs/` | Canonical architecture documentation. |
 
 ## Regression checks
 

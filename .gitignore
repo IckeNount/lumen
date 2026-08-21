@@ -60,8 +60,5 @@ frontend/coverage/
 .cache/
 models/
 
-# LangSmith / local traces (if exported)
-traces_export/
-
 # Local planning specifications
 docs/superpowers/specs/

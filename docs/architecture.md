@@ -115,14 +115,14 @@ Keeping FastAPI avoids breaking the existing frontend and API consumers. New evi
 - Local semantic retrieval ranks a relevant fixture above an unrelated fixture.
 - Evidence hardening deduplicates canonical sources, applies the deterministic ordering rule, and emits tested gap signals.
 - An in-memory MCP client discovers exactly two tools and verifies the `research_evidence` structured-content contract.
-- FastAPI health, chunking, legacy mock embeddings, configuration, and the existing citation helper have targeted tests.
+- FastAPI health, chunking, legacy mock embeddings, and configuration have targeted tests.
 - The secondary frontend has component/unit tests and a production build command.
 
 ### Deferred production work
 
-- The evaluation runner is intentionally incomplete; seed questions and a citation helper do not constitute a completed evaluation suite.
+- An evaluation runner and quality baselines are not included.
 - Production tracing and observability are not implemented.
-- The deployment descriptors have not been verified against a live public service.
+- Hosted deployment configuration and verification are not included.
 - Public authentication, authorization, rate limiting, Chroma lifecycle management, secret management, and production monitoring are not complete.
 - The pipeline does not yet provide production crawling, caching, comprehensive retry policy, or search-service failover beyond its current fixed priority.
 
