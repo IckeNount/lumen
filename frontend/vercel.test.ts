@@ -19,13 +19,12 @@ describe("Vercel configuration", () => {
       expect(config.rewrites).toEqual([
         {
           source: "/health",
-          destination: "$RAILWAY_BACKEND_URL/health",
-          env: ["RAILWAY_BACKEND_URL"],
+          destination: "https://lumen-production-4a39.up.railway.app/health",
         },
         {
           source: "/api/:path*",
-          destination: "$RAILWAY_BACKEND_URL/api/:path*",
-          env: ["RAILWAY_BACKEND_URL"],
+          destination:
+            "https://lumen-production-4a39.up.railway.app/api/:path*",
         },
       ]);
     },

@@ -134,6 +134,18 @@ returned Vercel `NOT_FOUND`, proving this was not propagation delay.
 - [x] Update the deployment documentation to name `frontend/vercel.json`.
 - [ ] Run the complete checks, commit, push, and verify production again.
 
+### Task 5: Preserve upstream paths with explicit destinations
+
+After both config roots were deployed, `/health` reached Railway but returned
+Railway's root-route 404. Vercel resolved the environment-origin placeholder
+without retaining the appended `/health` path.
+
+- [x] Use the supplied public Railway origin in both rewrite configs.
+- [x] Remove runtime environment substitution from the rewrite destinations.
+- [x] Update both regression cases to require complete upstream paths.
+- [x] Document that a Railway domain change requires updating both files.
+- [ ] Run the complete checks, commit, push, and verify production again.
+
 ### Task 4: Support both deployed Vercel root layouts
 
 The `lumen-research-copilot` project was redeployed after the environment
