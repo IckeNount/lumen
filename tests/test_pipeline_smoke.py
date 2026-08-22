@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 from lumen.pipeline.chunk import chunk_document
 from lumen.pipeline.embed import embed_texts
 from lumen.config import Settings
@@ -20,3 +22,5 @@ def test_embed_texts_mock() -> None:
     vectors = embed_texts(["alpha", "beta"], settings=s)
     assert len(vectors) == 2
     assert len(vectors[0]) == 1536
+    assert all(math.isfinite(value) for vector in vectors for value in vector)
+    assert all(math.isclose(math.sqrt(sum(value * value for value in vector)), 1.0) for vector in vectors)

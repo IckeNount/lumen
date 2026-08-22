@@ -134,6 +134,20 @@ returned Vercel `NOT_FOUND`, proving this was not propagation delay.
 - [x] Update the deployment documentation to name `frontend/vercel.json`.
 - [ ] Run the complete checks, commit, push, and verify production again.
 
+### Task 6: Emit JSON-safe mock retrieval scores
+
+The first successful live stream ended with citation scores serialized as
+`NaN`. The mock embedding generator interpreted random hash bytes as IEEE-754
+floats, which can produce non-finite components and Chroma distances that are
+not valid JSON numbers.
+
+- [x] Add a regression assertion that every mock embedding component is finite.
+- [x] Require every mock embedding vector to remain unit-normalized.
+- [x] Generate deterministic components by scaling hash bytes instead of
+  interpreting arbitrary bytes as floats.
+- [ ] Run the complete checks, commit, push, and verify that a live `done` event
+  parses as strict JSON with finite citation scores.
+
 ### Task 5: Preserve upstream paths with explicit destinations
 
 After both config roots were deployed, `/health` reached Railway but returned

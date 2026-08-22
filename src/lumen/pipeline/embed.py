@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import math
-import struct
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
@@ -40,13 +39,10 @@ def _mock_embedding_vector(text: str, dim: int = _EMBEDDING_DIM) -> list[float]:
     counter = 0
     while len(out) < dim:
         block = hashlib.sha256(digest + counter.to_bytes(4, "big")).digest()
-        for i in range(0, len(block) - 3, 4):
-            if len(out) >= dim:
-                break
-            (w,) = struct.unpack_from("<f", block, i)
-            out.append(float(w))
+        remaining = dim - len(out)
+        out.extend((byte - 127.5) / 127.5 for byte in block[:remaining])
         counter += 1
-    norm = math.sqrt(sum(x * x for x in out)) or 1.0
+    norm = math.sqrt(math.fsum(x * x for x in out)) or 1.0
     return [x / norm for x in out]
 
 
