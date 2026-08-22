@@ -14,7 +14,11 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # LLM — OpenAI SDK; point OPENAI_BASE_URL at OpenRouter for freemium use
+    # LLM — OpenRouter through the OpenAI-compatible SDK; legacy OpenAI config remains supported
+    openrouter_api_key: str | None = Field(
+        default=None,
+        validation_alias="OPENROUTER_API_KEY",
+    )
     openai_api_key: str | None = Field(default=None, validation_alias="OPENAI_API_KEY")
     openai_base_url: str | None = Field(
         default=None,

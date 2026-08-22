@@ -43,7 +43,7 @@ Codex / ChatGPT-authenticated host
 -> host model synthesis
 ```
 
-The ChatGPT session authenticates the Codex host and supplies the model used for final reasoning. Lumen's `research_evidence` path makes no LLM or chat-completion call, so the default MCP workflow does not require `OPENAI_API_KEY`. Search keys are optional, but without `TAVILY_API_KEY` or `SERPER_API_KEY` Lumen uses a fixed Python-license page as a connectivity demo rather than performing a real search.
+The ChatGPT session authenticates the Codex host and supplies the model used for final reasoning. Lumen's `research_evidence` path makes no LLM or chat-completion call, so the default MCP workflow does not require `OPENROUTER_API_KEY` or `OPENAI_API_KEY`. Search keys are optional, but without `TAVILY_API_KEY` or `SERPER_API_KEY` Lumen uses a fixed Python-license page as a connectivity demo rather than performing a real search.
 
 See [docs/architecture.md](docs/architecture.md) for component boundaries and failure behavior.
 
@@ -104,7 +104,7 @@ research_evidence(question: string, session_id?: string, max_sources: integer = 
 
 ## Secondary FastAPI interface
 
-The earlier FastAPI and React flow remains available for local compatibility. It is not the canonical MCP architecture and does not inherit the Codex host's ChatGPT authentication. Its decomposition, contradiction detection, and report synthesis use the configured OpenAI-compatible chat endpoint and require `OPENAI_API_KEY` to complete synthesis.
+The earlier FastAPI and React flow remains available for local compatibility. It is not the canonical MCP architecture and does not inherit the Codex host's ChatGPT authentication. Its decomposition, contradiction detection, and report synthesis use the configured OpenAI-compatible chat endpoint and require `OPENROUTER_API_KEY` (or the legacy `OPENAI_API_KEY`) to complete synthesis.
 
 Start the API and frontend in separate terminals:
 
@@ -131,7 +131,7 @@ Browser -> Vercel (Vite frontend and same-origin rewrites) -> Railway (FastAPI)
 
 Create the Railway service from the repository root. Railpack detects the root `requirements.txt`, so no custom build command is required. `railpack.json` starts `lumen.api.app:app` on `0.0.0.0:$PORT`, while `railway.json` configures the same Railway start command and `GET /health` deployment healthcheck. Add a Railway volume mounted at `/data` and set `CHROMA_PERSIST_DIRECTORY` to `/data/chroma`; local development continues to use `./data/chroma` from `.env.example`.
 
-The Railway service needs backend-only configuration for its OpenAI-compatible chat endpoint, search provider, and Chroma path. For the existing OpenRouter setup, configure `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `LUMEN_CHAT_MODEL`, `LUMEN_USE_MOCK_EMBEDDINGS`, `TAVILY_API_KEY` (or `SERPER_API_KEY`), and `CHROMA_PERSIST_DIRECTORY`. Railway supplies `PORT`; do not set it manually. No secret belongs in a `VITE_*` variable.
+The Railway service needs backend-only configuration for its OpenAI-compatible chat endpoint, search provider, and Chroma path. For OpenRouter, configure `OPENROUTER_API_KEY`, `LUMEN_CHAT_MODEL`, `LUMEN_USE_MOCK_EMBEDDINGS`, `TAVILY_API_KEY` (or `SERPER_API_KEY`), and `CHROMA_PERSIST_DIRECTORY`. `OPENAI_BASE_URL` is optional because Lumen selects OpenRouter's endpoint automatically when `OPENROUTER_API_KEY` is present. Railway supplies `PORT`; do not set it manually. No secret belongs in a `VITE_*` variable.
 
 Create the Vercel project with `frontend` as its Root Directory. Vercel detects Vite and runs the existing production build. Set the server-side Vercel variable `RAILWAY_BACKEND_URL` to the Railway public service origin. `frontend/vercel.mjs` forwards `/health` and `/api/*` to Railway, so the browser continues to use same-origin relative paths and no CORS configuration is needed.
 
