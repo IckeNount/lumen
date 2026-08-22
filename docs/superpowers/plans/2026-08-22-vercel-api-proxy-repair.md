@@ -120,3 +120,16 @@ Expected after the corrected commit is deployed: HTTP 200 with `{"status":"ok"}`
 Run: `curl -i -X POST -H 'Content-Type: application/json' --data '{"session_id":"deployment-check","question":"What is retrieval augmented generation?","max_subqueries":1}' https://lumen-research-copilot.vercel.app/api/v1/research/stream`
 
 Expected after deployment: the response reaches FastAPI and is not a Vercel `NOT_FOUND`; successful backend configuration returns an NDJSON stream.
+
+### Task 2: Use Vercel's static Vite configuration path
+
+The first production deployment compiled the TypeScript configuration locally
+but Vercel's Git deployment ignored it. The production alias updated and still
+returned Vercel `NOT_FOUND`, proving this was not propagation delay.
+
+- [x] Replace `frontend/vercel.ts` with the equivalent `frontend/vercel.json`.
+- [x] Preserve runtime substitution for `RAILWAY_BACKEND_URL` through each
+  rewrite's schema-supported `env` field.
+- [x] Update the regression test to inspect the deployed configuration file.
+- [x] Update the deployment documentation to name `frontend/vercel.json`.
+- [ ] Run the complete checks, commit, push, and verify production again.

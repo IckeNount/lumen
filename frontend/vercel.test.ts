@@ -1,21 +1,16 @@
-import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("Vercel configuration", () => {
-  it("compiles health and API rewrites at the top level", () => {
-    const output = execFileSync(
-      process.execPath,
-      ["node_modules/@vercel/config/dist/cli.js", "compile"],
-      {
-        cwd: process.cwd(),
-        encoding: "utf8",
-      },
-    );
-    const compiled = JSON.parse(output) as {
+  it("defines health and API rewrites at the top level", () => {
+    const config = JSON.parse(
+      readFileSync(resolve(process.cwd(), "vercel.json"), "utf8"),
+    ) as {
       rewrites?: Array<{ source: string; destination: string; env?: string[] }>;
     };
 
-    expect(compiled.rewrites).toEqual([
+    expect(config.rewrites).toEqual([
       {
         source: "/health",
         destination: "$RAILWAY_BACKEND_URL/health",

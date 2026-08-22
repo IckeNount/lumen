@@ -133,7 +133,7 @@ Create the Railway service from the repository root. Railpack detects the root `
 
 The Railway service needs backend-only configuration for its OpenAI-compatible chat endpoint, search provider, and Chroma path. For OpenRouter, configure `OPENROUTER_API_KEY`, `LUMEN_CHAT_MODEL`, `LUMEN_USE_MOCK_EMBEDDINGS`, `TAVILY_API_KEY` (or `SERPER_API_KEY`), and `CHROMA_PERSIST_DIRECTORY`. `OPENAI_BASE_URL` is optional because Lumen selects OpenRouter's endpoint automatically when `OPENROUTER_API_KEY` is present. Railway supplies `PORT`; do not set it manually. No secret belongs in a `VITE_*` variable.
 
-Create the Vercel project with `frontend` as its Root Directory. Vercel detects Vite and runs the existing production build. Set the server-side Vercel variable `RAILWAY_BACKEND_URL` to the Railway public service origin. `frontend/vercel.ts` forwards `/health` and `/api/*` to Railway, so the browser continues to use same-origin relative paths and no CORS configuration is needed.
+Create the Vercel project with `frontend` as its Root Directory. Vercel detects Vite and runs the existing production build. Set the server-side Vercel variable `RAILWAY_BACKEND_URL` to the Railway public service origin. `frontend/vercel.json` forwards `/health` and `/api/*` to Railway, so the browser continues to use same-origin relative paths and no CORS configuration is needed.
 
 The streaming endpoint returns report tokens followed by citations, contradictions, and uncertainty from the same research run. The frontend no longer repeats the expensive pipeline solely to obtain metadata.
 

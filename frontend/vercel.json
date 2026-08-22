@@ -1,0 +1,15 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    {
+      "source": "/health",
+      "destination": "$RAILWAY_BACKEND_URL/health",
+      "env": ["RAILWAY_BACKEND_URL"]
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "$RAILWAY_BACKEND_URL/api/:path*",
+      "env": ["RAILWAY_BACKEND_URL"]
+    }
+  ]
+}
