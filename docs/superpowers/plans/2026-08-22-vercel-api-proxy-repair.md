@@ -148,6 +148,17 @@ not valid JSON numbers.
 - [ ] Run the complete checks, commit, push, and verify that a live `done` event
   parses as strict JSON with finite citation scores.
 
+### Task 7: Defend against non-finite stored distances
+
+The live Railway service had not yet deployed the finite embedding generator,
+and the strict parser reproduced the invalid `NaN` event. Retrieval must also
+protect the API from stale Chroma data or unexpected provider output.
+
+- [x] Add regression cases for `NaN`, infinity, negative, and finite distances.
+- [x] Map invalid distances to the valid conservative score `0.0`.
+- [ ] Run the complete checks, commit, push, redeploy Railway, and repeat the
+  strict live NDJSON validation.
+
 ### Task 5: Preserve upstream paths with explicit destinations
 
 After both config roots were deployed, `/health` reached Railway but returned

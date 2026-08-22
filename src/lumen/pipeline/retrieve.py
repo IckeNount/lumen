@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -20,6 +21,12 @@ class RetrievedPassage:
     source_url: str
     text: str
     score: float
+
+
+def _similarity_score(distance: float) -> float:
+    if not math.isfinite(distance) or distance < 0.0:
+        return 0.0
+    return 1.0 / (1.0 + distance)
 
 
 def retrieve(
@@ -57,7 +64,7 @@ def retrieve(
         text = docs[i] if i < len(docs) else ""
         dist = float(dists[i]) if i < len(dists) else 0.0
         # Chroma L2 distance: lower is better; expose similarity-like score
-        score = 1.0 / (1.0 + dist)
+        score = _similarity_score(dist)
         passages.append(
             RetrievedPassage(chunk_id=str(chunk_id), source_url=url, text=str(text), score=score)
         )

@@ -6,6 +6,7 @@ import math
 
 from lumen.pipeline.chunk import chunk_document
 from lumen.pipeline.embed import embed_texts
+from lumen.pipeline.retrieve import _similarity_score
 from lumen.config import Settings
 
 
@@ -23,4 +24,14 @@ def test_embed_texts_mock() -> None:
     assert len(vectors) == 2
     assert len(vectors[0]) == 1536
     assert all(math.isfinite(value) for vector in vectors for value in vector)
-    assert all(math.isclose(math.sqrt(sum(value * value for value in vector)), 1.0) for vector in vectors)
+    assert all(
+        math.isclose(math.sqrt(sum(value * value for value in vector)), 1.0)
+        for vector in vectors
+    )
+
+
+def test_similarity_score_rejects_non_finite_distances() -> None:
+    assert _similarity_score(float("nan")) == 0.0
+    assert _similarity_score(float("inf")) == 0.0
+    assert _similarity_score(-1.0) == 0.0
+    assert _similarity_score(1.0) == 0.5
