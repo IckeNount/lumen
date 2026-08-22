@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 describe("Vercel configuration", () => {
   it("defines health and API rewrites at the top level", () => {
     const config = JSON.parse(
-      readFileSync(resolve(process.cwd(), "vercel.json"), "utf8"),
+      readFileSync(resolve(process.cwd(), "..", "vercel.json"), "utf8"),
     ) as {
       rewrites?: Array<{ source: string; destination: string; env?: string[] }>;
     };

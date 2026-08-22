@@ -133,3 +133,15 @@ returned Vercel `NOT_FOUND`, proving this was not propagation delay.
 - [x] Update the regression test to inspect the deployed configuration file.
 - [x] Update the deployment documentation to name `frontend/vercel.json`.
 - [ ] Run the complete checks, commit, push, and verify production again.
+
+### Task 3: Place configuration at the deployed project root
+
+The production deployment also ignored `frontend/vercel.json`. Because the
+frontend build still deployed successfully, the live Vercel projects are using
+root-level project build settings rather than `frontend` as Vercel's config
+discovery root.
+
+- [x] Move `vercel.json` from `frontend/` to the repository root.
+- [x] Point the regression test at the repository-root configuration.
+- [x] Correct the deployment documentation to describe the actual layout.
+- [ ] Run the complete checks, commit, push, and verify production again.
