@@ -120,6 +120,8 @@ npm run dev
 
 The API exposes `GET /health`, `POST /api/v1/research`, and `POST /api/v1/research/stream`. The frontend runs at `http://127.0.0.1:5173/` by default and calls the API at `http://127.0.0.1:8000/`.
 
+The stream reports the active pipeline stage, sources read, complete Markdown blocks, and one terminal research result. Findings, contradiction claims, report citations, and the source list share run-local `S1`, `S2`, and later IDs so the Research Brief can link every displayed claim back to its evidence.
+
 ## Vercel and Railway deployment
 
 The hosted demo keeps the secondary HTTP architecture intact:
@@ -135,7 +137,7 @@ The Railway service needs backend-only configuration for its OpenAI-compatible c
 
 Set the Vercel project to build the Vite app in `frontend` and emit `frontend/dist`. Matching `vercel.json` files at the repository root and `frontend/` support the existing Vercel projects' two root-directory layouts; both forward `/health` and `/api/*` to the public Railway service, so the browser continues to use same-origin relative paths and no CORS configuration is needed. `frontend/vercel.test.ts` prevents the routing definitions from drifting. When the Railway public domain changes, update both config files together.
 
-The streaming endpoint returns report tokens followed by citations, contradictions, and uncertainty from the same research run. The frontend no longer repeats the expensive pipeline solely to obtain metadata.
+The streaming endpoint returns progress, stable report blocks, and structured evidence from the same research run. The frontend does not repeat the expensive pipeline solely to obtain metadata.
 
 This configuration supports a small hosted deployment. It has not been verified against live Vercel or Railway accounts and does not add public authentication, rate limiting, production observability, or automated Chroma retention.
 

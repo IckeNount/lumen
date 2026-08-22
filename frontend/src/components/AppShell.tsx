@@ -22,7 +22,7 @@ export function AppShell({
           </span>
           <div>
             <h1>Lumen</h1>
-            <p>Research Console</p>
+            <p>Evidence-led research</p>
           </div>
         </div>
 

@@ -6,13 +6,6 @@ export type ResearchRequest = {
   max_subqueries: number;
 };
 
-// Kept optional until the old panel is removed in the next task.
-export type Citation = {
-  chunk_id?: string;
-  source_url?: string;
-  score?: number;
-};
-
 export type StageName =
   | "planning"
   | "searching"
@@ -44,8 +37,6 @@ export type Contradiction = {
   claim_b: { text: string; source_ids: string[] };
   explanation: string;
   unresolved: string | null;
-  summary?: string;
-  source_indexes?: string;
 };
 
 export type ResearchResult = {
@@ -57,11 +48,7 @@ export type ResearchResult = {
   uncertainty_notes: string[];
   completed_at: string;
   duration_ms: number;
-  session_id?: string;
-  citations?: Citation[];
 };
-
-export type ResearchMetadata = ResearchResult;
 
 export type StageEvent = {
   type: "stage";

@@ -1,28 +1,21 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
+import { checkHealth, streamResearch, type ResearchRequest } from "./api/lumenClient";
 import { AppShell } from "./components/AppShell";
 import { ComposerPanel } from "./components/ComposerPanel";
-import { EvidencePanel } from "./components/EvidencePanel";
 import { ReportPanel } from "./components/ReportPanel";
+import { ResearchProgress } from "./components/ResearchProgress";
 import {
-  checkHealth,
-  fetchResearchMetadata,
-  streamResearch,
-  type Citation,
-  type Contradiction,
-  type ResearchMetadata,
-  type ResearchRequest,
-} from "./api/lumenClient";
+  initialResearchRunState,
+  researchRunReducer,
+} from "./lib/researchRun";
 import { createSessionId } from "./lib/session";
-
-export type RequestStatus =
-  | "idle"
-  | "checkingHealth"
-  | "ready"
-  | "streaming"
-  | "fetchingMetadata"
-  | "complete"
-  | "error"
-  | "cancelled";
 
 export type HealthStatus = "checking" | "healthy" | "unhealthy";
 
@@ -34,19 +27,14 @@ export default function App() {
   const [sessionId, setSessionId] = useState(() => createSessionId());
   const [maxSubqueries, setMaxSubqueries] = useState(4);
   const [healthStatus, setHealthStatus] = useState<HealthStatus>("checking");
-  const [requestStatus, setRequestStatus] =
-    useState<RequestStatus>("checkingHealth");
-  const [reportMarkdown, setReportMarkdown] = useState("");
-  const [citations, setCitations] = useState<Citation[]>([]);
-  const [contradictions, setContradictions] = useState<Contradiction[]>([]);
-  const [uncertaintyNotes, setUncertaintyNotes] = useState<string[]>([]);
-  const [errorMessage, setErrorMessage] = useState("");
-  const [metadataMessage, setMetadataMessage] = useState("");
+  const [runState, dispatch] = useReducer(
+    researchRunReducer,
+    initialResearchRunState,
+  );
   const abortRef = useRef<AbortController | null>(null);
-  const reportRef = useRef("");
-
-  const isBusy =
-    requestStatus === "streaming" || requestStatus === "fetchingMetadata";
+  const briefHeadingRef = useRef<HTMLHeadingElement>(null);
+  const focusOnCompleteRef = useRef(false);
+  const isBusy = runState.status === "streaming";
 
   const request = useMemo<ResearchRequest>(
     () => ({
@@ -59,121 +47,56 @@ export default function App() {
 
   const refreshHealth = useCallback(async () => {
     setHealthStatus("checking");
-    if (requestStatus === "idle") {
-      setRequestStatus("checkingHealth");
-    }
-    const ok = await checkHealth();
-    setHealthStatus(ok ? "healthy" : "unhealthy");
-    setRequestStatus((current) =>
-      current === "checkingHealth" ? "ready" : current,
-    );
-  }, [requestStatus]);
+    setHealthStatus((await checkHealth()) ? "healthy" : "unhealthy");
+  }, []);
 
   useEffect(() => {
     void refreshHealth();
   }, [refreshHealth]);
 
-  const resetEvidence = () => {
-    setCitations([]);
-    setContradictions([]);
-    setUncertaintyNotes([]);
-    setMetadataMessage("");
-  };
-
-  const applyMetadata = (metadata: ResearchMetadata) => {
-    setCitations(metadata.citations ?? []);
-    setContradictions(metadata.contradictions ?? []);
-    setUncertaintyNotes(metadata.uncertainty_notes ?? []);
-    if (!reportRef.current && metadata.report_markdown) {
-      reportRef.current = metadata.report_markdown;
-      setReportMarkdown(metadata.report_markdown);
+  useEffect(() => {
+    if (runState.status === "complete" && focusOnCompleteRef.current) {
+      briefHeadingRef.current?.focus();
+      focusOnCompleteRef.current = false;
     }
-  };
+  }, [runState.status]);
 
-  const loadMetadata = async (
-    researchRequest: ResearchRequest,
-    signal?: AbortSignal,
-  ) => {
-    setRequestStatus("fetchingMetadata");
-    try {
-      const metadata = await fetchResearchMetadata(researchRequest, signal);
-      applyMetadata(metadata);
-      setRequestStatus("complete");
-    } catch (error) {
-      if (signal?.aborted) {
-        setRequestStatus("cancelled");
-        return;
-      }
-      setMetadataMessage(
-        error instanceof Error ? error.message : "Metadata unavailable.",
-      );
-      setRequestStatus(reportRef.current ? "complete" : "error");
-      if (!reportRef.current) {
-        setErrorMessage(
-          error instanceof Error ? error.message : "Research request failed.",
-        );
-      }
-    }
-  };
-
-  const runResearch = async () => {
+  const runResearch = async (focusOnComplete = false) => {
     if (!request.question || !request.session_id || isBusy) {
       return;
     }
 
     const controller = new AbortController();
     abortRef.current = controller;
-    reportRef.current = "";
-    setReportMarkdown("");
-    resetEvidence();
-    setErrorMessage("");
-    setRequestStatus("streaming");
+    focusOnCompleteRef.current = focusOnComplete;
+    dispatch({ type: "started" });
 
     try {
-      const metadata = await streamResearch(
+      await streamResearch(
         request,
-        (token) => {
-          reportRef.current += token;
-          setReportMarkdown(reportRef.current);
-        },
+        (event) => dispatch({ type: "event", event }),
         controller.signal,
       );
-      applyMetadata(metadata);
-      setRequestStatus("complete");
     } catch (error) {
       if (controller.signal.aborted) {
-        setRequestStatus("cancelled");
-        return;
-      }
-
-      setMetadataMessage("Streaming failed; loaded a complete result instead.");
-      try {
-        const metadata = await fetchResearchMetadata(request);
-        reportRef.current = metadata.report_markdown;
-        setReportMarkdown(metadata.report_markdown);
-        setCitations(metadata.citations ?? []);
-        setContradictions(metadata.contradictions ?? []);
-        setUncertaintyNotes(metadata.uncertainty_notes ?? []);
-        setRequestStatus("complete");
-      } catch (fallbackError) {
-        setRequestStatus("error");
-        setErrorMessage(
-          fallbackError instanceof Error
-            ? fallbackError.message
-            : error instanceof Error
-              ? error.message
-              : "Research request failed.",
-        );
+        dispatch({ type: "cancelled" });
+      } else {
+        dispatch({
+          type: "failed",
+          message: error instanceof Error ? error.message : "Research request failed.",
+        });
       }
     } finally {
-      abortRef.current = null;
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+      }
     }
   };
 
   const cancelResearch = () => {
     abortRef.current?.abort();
     abortRef.current = null;
-    setRequestStatus("cancelled");
+    dispatch({ type: "cancelled" });
   };
 
   return (
@@ -182,27 +105,22 @@ export default function App() {
         question={question}
         sessionId={sessionId}
         maxSubqueries={maxSubqueries}
-        status={requestStatus}
+        status={runState.status}
         isBusy={isBusy}
         onQuestionChange={setQuestion}
         onSessionIdChange={setSessionId}
         onRegenerateSession={() => setSessionId(createSessionId())}
         onMaxSubqueriesChange={setMaxSubqueries}
-        onRun={() => void runResearch()}
-        onCancel={cancelResearch}
+        onRun={(keyboardInitiated) => void runResearch(keyboardInitiated)}
       />
-      <ReportPanel
-        reportMarkdown={reportMarkdown}
-        status={requestStatus}
-        errorMessage={errorMessage}
-      />
-      <EvidencePanel
-        citations={citations}
-        contradictions={contradictions}
-        uncertaintyNotes={uncertaintyNotes}
-        status={requestStatus}
-        message={metadataMessage}
-      />
+      {isBusy ? (
+        <ResearchProgress state={runState} onCancel={cancelResearch} />
+      ) : (
+        <ReportPanel
+          state={runState}
+          headingRef={briefHeadingRef}
+        />
+      )}
     </AppShell>
   );
 }

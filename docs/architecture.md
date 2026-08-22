@@ -108,7 +108,7 @@ The React Research Console consumes this interface. This older path uses `pipeli
 
 For the hosted deployment, Vercel serves the compiled Vite frontend and forwards the frontend's existing relative `/health` and `/api/*` requests to FastAPI on Railway. This same-origin proxy keeps backend credentials out of the frontend and avoids adding a CORS layer. Railway runs the existing FastAPI adapter; it does not replace or modify the canonical local stdio MCP path.
 
-The HTTP streaming adapter consumes one shared orchestrator run. It sends report fragments as `token` events and citations, contradictions, and uncertainty as the final `done` event. The browser therefore does not invoke the research pipeline again to obtain sidecar metadata.
+The HTTP streaming adapter consumes one shared orchestrator run. It sends stage updates, discovered sources, and complete Markdown blocks before one structured `done` result containing findings, claim-level contradictions, sources, and uncertainty. The browser therefore does not invoke the research pipeline again to obtain sidecar metadata.
 
 Chroma's persistence directory remains environment-configurable. Local development defaults to `./data/chroma`; the hosted demo mounts a Railway volume at `/data` and uses `/data/chroma`. Persistent storage prevents loss on Railway redeploys, while collection retention and cleanup remain deferred.
 

@@ -1,5 +1,5 @@
-import { Play, RotateCw, Square } from "lucide-react";
-import { type RequestStatus } from "../App";
+import { Play, RotateCw } from "lucide-react";
+import type { RequestStatus } from "../lib/researchRun";
 
 type ComposerPanelProps = {
   question: string;
@@ -11,18 +11,14 @@ type ComposerPanelProps = {
   onSessionIdChange: (value: string) => void;
   onRegenerateSession: () => void;
   onMaxSubqueriesChange: (value: number) => void;
-  onRun: () => void;
-  onCancel: () => void;
+  onRun: (keyboardInitiated: boolean) => void;
 };
 
 const statusLabel: Record<RequestStatus, string> = {
-  idle: "Idle",
-  checkingHealth: "Checking API",
   ready: "Ready",
-  streaming: "Streaming",
-  fetchingMetadata: "Fetching metadata",
+  streaming: "Researching",
   complete: "Complete",
-  error: "Error",
+  error: "Interrupted",
   cancelled: "Cancelled",
 };
 
@@ -37,81 +33,85 @@ export function ComposerPanel({
   onRegenerateSession,
   onMaxSubqueriesChange,
   onRun,
-  onCancel,
 }: ComposerPanelProps) {
   const canRun = Boolean(question.trim() && sessionId.trim() && !isBusy);
 
   return (
-    <aside className="panel composer-panel" aria-label="Question composer">
-      <div className="panel-heading">
-        <span>Composer</span>
-        <strong>{statusLabel[status]}</strong>
-      </div>
-
-      <label className="field">
-        <span>Question</span>
-        <textarea
-          value={question}
-          onChange={(event) => onQuestionChange(event.target.value)}
-          rows={10}
-          maxLength={8000}
-        />
-      </label>
-
-      <label className="field">
-        <span>Session</span>
-        <div className="joined-control">
-          <input
-            value={sessionId}
-            onChange={(event) => onSessionIdChange(event.target.value)}
-            maxLength={128}
-          />
-          <button
-            className="icon-button"
-            type="button"
-            title="Regenerate session"
-            aria-label="Regenerate session"
-            onClick={onRegenerateSession}
+    <section className="panel composer-panel" aria-label="Question composer">
+      <div className="composer-main">
+        <label className="field question-field">
+          <span>Research question</span>
+          <textarea
+            value={question}
+            onChange={(event) => onQuestionChange(event.target.value)}
+            rows={4}
+            maxLength={8000}
             disabled={isBusy}
-          >
-            <RotateCw size={16} />
-          </button>
-        </div>
-      </label>
+          />
+        </label>
 
-      <label className="field">
-        <span>Subqueries</span>
-        <input
-          type="number"
-          min={1}
-          max={24}
-          value={maxSubqueries}
-          onChange={(event) =>
-            onMaxSubqueriesChange(
-              Math.min(24, Math.max(1, Number(event.target.value) || 1)),
-            )
-          }
-        />
-      </label>
-
-      <div className="composer-actions">
-        {isBusy ? (
-          <button className="command-button stop" type="button" onClick={onCancel}>
-            <Square size={16} fill="currentColor" />
-            Cancel
-          </button>
-        ) : (
-          <button
-            className="command-button primary"
-            type="button"
-            onClick={onRun}
-            disabled={!canRun}
-          >
-            <Play size={16} fill="currentColor" />
-            Run
-          </button>
-        )}
+        <button
+          className="command-button primary run-button"
+          type="button"
+          onClick={(event) => onRun(event.detail === 0)}
+          disabled={!canRun}
+        >
+          <Play size={15} fill="currentColor" aria-hidden="true" />
+          {status === "cancelled"
+            ? "Run again"
+            : status === "error"
+              ? "Retry"
+              : "Run research"}
+        </button>
       </div>
-    </aside>
+
+      <div className="composer-footer">
+        <strong className={`request-state request-state--${status}`}>
+          {statusLabel[status]}
+        </strong>
+        <details className="research-settings">
+          <summary>Research settings</summary>
+          <div className="settings-grid">
+            <label className="field">
+              <span>Session</span>
+              <div className="joined-control">
+                <input
+                  value={sessionId}
+                  onChange={(event) => onSessionIdChange(event.target.value)}
+                  maxLength={128}
+                  disabled={isBusy}
+                />
+                <button
+                  className="icon-button"
+                  type="button"
+                  title="Regenerate session"
+                  aria-label="Regenerate session"
+                  onClick={onRegenerateSession}
+                  disabled={isBusy}
+                >
+                  <RotateCw size={16} aria-hidden="true" />
+                </button>
+              </div>
+            </label>
+
+            <label className="field">
+              <span>Subqueries</span>
+              <input
+                type="number"
+                min={1}
+                max={24}
+                value={maxSubqueries}
+                disabled={isBusy}
+                onChange={(event) =>
+                  onMaxSubqueriesChange(
+                    Math.min(24, Math.max(1, Number(event.target.value) || 1)),
+                  )
+                }
+              />
+            </label>
+          </div>
+        </details>
+      </div>
+    </section>
   );
 }
