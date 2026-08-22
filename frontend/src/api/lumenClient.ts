@@ -6,34 +6,83 @@ export type ResearchRequest = {
   max_subqueries: number;
 };
 
+// Kept optional until the old panel is removed in the next task.
 export type Citation = {
   chunk_id?: string;
   source_url?: string;
   score?: number;
 };
 
+export type StageName =
+  | "planning"
+  | "searching"
+  | "reading"
+  | "comparing"
+  | "writing";
+
+export type StageStatus = "active" | "complete" | "warning";
+
+export type Source = {
+  id: string;
+  title: string;
+  domain: string;
+  url: string;
+  excerpt?: string;
+};
+
+export type Finding = {
+  id: string;
+  text: string;
+  source_ids: string[];
+};
+
 export type Contradiction = {
+  id: string;
+  kind: "direct_conflict" | "context_difference" | "evidence_gap";
+  topic: string;
+  claim_a: { text: string; source_ids: string[] };
+  claim_b: { text: string; source_ids: string[] };
+  explanation: string;
+  unresolved: string | null;
   summary?: string;
   source_indexes?: string;
 };
 
-export type ResearchMetadata = {
-  session_id: string;
-  report_markdown: string;
-  citations: Citation[];
+export type ResearchResult = {
+  question: string;
+  key_findings: Finding[];
   contradictions: Contradiction[];
+  report_markdown: string;
+  sources: Source[];
   uncertainty_notes: string[];
+  completed_at: string;
+  duration_ms: number;
+  session_id?: string;
+  citations?: Citation[];
 };
 
-type StreamEvent =
-  | { type: "meta"; session_id?: string }
-  | { type: "token"; text?: string }
+export type ResearchMetadata = ResearchResult;
+
+export type StageEvent = {
+  type: "stage";
+  stage: StageName;
+  status: StageStatus;
+  message: string;
+  completed?: number;
+  total?: number;
+};
+
+export type ResearchEvent =
+  | { type: "run_started"; run_id: string; started_at: string }
+  | StageEvent
+  | { type: "source_found"; source: Source }
+  | { type: "report_block"; markdown: string }
+  | { type: "done"; result: ResearchResult }
   | {
-      type: "done";
-      session_id?: string;
-      citations?: Citation[];
-      contradictions?: Contradiction[];
-      uncertainty_notes?: string[];
+      type: "error";
+      stage: string;
+      message: string;
+      recoverable: boolean;
     };
 
 export class LumenApiError extends Error {
@@ -83,9 +132,9 @@ export async function checkHealth(signal?: AbortSignal): Promise<boolean> {
 
 export async function streamResearch(
   request: ResearchRequest,
-  onToken: (token: string) => void,
+  onEvent: (event: ResearchEvent) => void,
   signal?: AbortSignal,
-): Promise<ResearchMetadata> {
+): Promise<ResearchResult> {
   const response = await fetch("/api/v1/research/stream", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -103,20 +152,14 @@ export async function streamResearch(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let metadata: ResearchMetadata | undefined;
+  let result: ResearchResult | undefined;
 
-  const handleEvent = (event: StreamEvent) => {
-    if (event.type === "token" && event.text) {
-      onToken(event.text);
-    }
+  const handleEvent = (event: ResearchEvent) => {
+    onEvent(event);
     if (event.type === "done") {
-      metadata = {
-        session_id: event.session_id ?? request.session_id,
-        report_markdown: "",
-        citations: event.citations ?? [],
-        contradictions: event.contradictions ?? [],
-        uncertainty_notes: event.uncertainty_notes ?? [],
-      };
+      result = event.result;
+    } else if (event.type === "error") {
+      throw new LumenApiError(event.message);
     }
   };
 
@@ -125,12 +168,12 @@ export async function streamResearch(
     if (done) {
       break;
     }
-
-    const decoded = decoder.decode(value, { stream: true });
-    const result = consumeNdjson<StreamEvent>(buffer, decoded);
-    buffer = result.buffer;
-
-    for (const item of result.items) {
+    const parsed = consumeNdjson<ResearchEvent>(
+      buffer,
+      decoder.decode(value, { stream: true }),
+    );
+    buffer = parsed.buffer;
+    for (const item of parsed.items) {
       if (!item.ok) {
         throw new LumenApiError(`Malformed stream event: ${item.line}`);
       }
@@ -138,23 +181,23 @@ export async function streamResearch(
     }
   }
 
-  for (const item of flushNdjson<StreamEvent>(buffer + decoder.decode())) {
+  for (const item of flushNdjson<ResearchEvent>(buffer + decoder.decode())) {
     if (!item.ok) {
       throw new LumenApiError(`Malformed stream event: ${item.line}`);
     }
     handleEvent(item.value);
   }
 
-  if (!metadata) {
-    throw new LumenApiError("Research stream ended without metadata.");
+  if (!result) {
+    throw new LumenApiError("Research stream ended without a result.");
   }
-  return metadata;
+  return result;
 }
 
 export async function fetchResearchMetadata(
   request: ResearchRequest,
   signal?: AbortSignal,
-): Promise<ResearchMetadata> {
+): Promise<ResearchResult> {
   const response = await fetch("/api/v1/research", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -165,6 +208,5 @@ export async function fetchResearchMetadata(
   if (!response.ok) {
     throw new LumenApiError(await readError(response), response.status);
   }
-
-  return (await response.json()) as ResearchMetadata;
+  return (await response.json()) as ResearchResult;
 }
