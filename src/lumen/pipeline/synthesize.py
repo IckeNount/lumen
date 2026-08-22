@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -14,12 +15,44 @@ from lumen.llm.openai_compat import build_openai_client
 
 def _passages_block(passages: list[dict[str, str]]) -> str:
     lines: list[str] = []
-    for i, p in enumerate(passages, start=1):
-        cid = p.get("chunk_id", f"{i}")
+    for p in passages:
+        sid = p.get("source_id", "")
+        cid = p.get("chunk_id", sid)
         url = p.get("source_url", "")
         body = p.get("text", "").strip()
-        lines.append(f"### Source [{i}] chunk_id={cid}\nURL: {url}\n\n{body}\n")
+        lines.append(f"### Source {sid} chunk_id={cid}\nURL: {url}\n\n{body}\n")
     return "\n".join(lines)
+
+
+_FINDINGS = re.compile(r"(?ms)^## Key Findings\s*\n(.*?)(?=^##\s|\Z)")
+
+
+def extract_key_findings(report_markdown: str) -> list[dict[str, object]]:
+    """Parse sourced bullets from the report's required findings section."""
+    match = _FINDINGS.search(report_markdown)
+    if not match:
+        return []
+
+    findings: list[dict[str, object]] = []
+    for line in match.group(1).splitlines():
+        bullet = re.match(r"^\s*[-*]\s+(.+)$", line)
+        if not bullet:
+            continue
+        raw = bullet.group(1).strip()
+        source_ids = list(dict.fromkeys(re.findall(r"\[(S\d+)\]", raw)))
+        if not source_ids:
+            continue
+        text = re.sub(r"\s*\[S\d+\](?:\(#source-S\d+\))?", "", raw).strip()
+        findings.append(
+            {"id": f"K{len(findings) + 1}", "text": text, "source_ids": source_ids}
+        )
+    return findings
+
+
+def extract_report_body(report_markdown: str) -> str:
+    """Remove the structured findings prelude from the readable report body."""
+    match = re.search(r"(?ms)^## Report\s*\n(.*)\Z", report_markdown)
+    return match.group(1).strip() if match else report_markdown.strip()
 
 
 def synthesize_report(
@@ -47,7 +80,9 @@ def iter_synthesize_report(
     client = build_openai_client(s)
     system = (
         "You are a careful research assistant. Answer using ONLY the provided sources. "
-        "Cite sources inline as [1], [2] matching the source index. "
+        "Start with '## Key Findings' and a short bullet list, then write '## Report' "
+        "and the full answer. Cite every supported claim with the supplied source ID "
+        "as a Markdown link such as [S1](#source-S1). "
         "If evidence is insufficient, say so explicitly."
     )
     user = f"Question:\n{question}\n\n## Retrieved passages\n\n{_passages_block(passages)}"

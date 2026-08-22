@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from lumen.config import Settings
@@ -16,7 +16,7 @@ def find_contradictions(
     passages: list[dict[str, str]],
     *,
     settings: Settings | None = None,
-) -> list[dict[str, str]]:
+) -> list[dict[str, Any]]:
     """Return structured contradiction items with source ids."""
     s = settings or get_settings()
     if len(passages) < 2:
@@ -28,13 +28,21 @@ def find_contradictions(
         return []
 
     lines = []
-    for i, p in enumerate(passages, start=1):
-        lines.append(f"[{i}] chunk_id={p.get('chunk_id','')} url={p.get('source_url','')}\n{p.get('text','')[:2000]}")
+    for p in passages:
+        lines.append(
+            f"source_id={p.get('source_id','')} chunk_id={p.get('chunk_id','')} "
+            f"url={p.get('source_url','')}\n{p.get('text','')[:2000]}"
+        )
     blob = "\n\n".join(lines)
 
     system = (
-        "You output only JSON: {\"items\": [{\"summary\": string, \"source_indexes\": number[]}]}. "
-        "List substantive contradictions between sources; use empty items if none."
+        "You output only JSON with this shape: {\"items\": [{\"kind\": "
+        "\"direct_conflict\" | \"context_difference\" | \"evidence_gap\", "
+        "\"topic\": string, \"claim_a\": {\"text\": string, \"source_ids\": "
+        "string[]}, \"claim_b\": {\"text\": string, \"source_ids\": string[]}, "
+        "\"explanation\": string, \"unresolved\": string | null}]}. "
+        "Use only supplied source IDs. List substantive disagreements; use empty items "
+        "if none."
     )
     user = f"Passages:\n\n{blob}"
     try:
@@ -61,13 +69,53 @@ def find_contradictions(
     if not isinstance(items, list):
         return []
 
-    out: list[dict[str, str]] = []
+    allowed_ids = {p.get("source_id", "") for p in passages}
+    allowed_kinds = {"direct_conflict", "context_difference", "evidence_gap"}
+    out: list[dict[str, Any]] = []
     for it in items:
         if not isinstance(it, dict):
             continue
-        summary = it.get("summary")
-        if isinstance(summary, str) and summary.strip():
-            idxs = it.get("source_indexes")
-            keys = ",".join(str(x) for x in idxs) if isinstance(idxs, list) else ""
-            out.append({"summary": summary.strip(), "source_indexes": keys})
+        kind = it.get("kind")
+        claim_a = it.get("claim_a")
+        claim_b = it.get("claim_b")
+        if (
+            kind not in allowed_kinds
+            or not isinstance(claim_a, dict)
+            or not isinstance(claim_b, dict)
+        ):
+            continue
+        text_a = claim_a.get("text")
+        text_b = claim_b.get("text")
+        ids_a = claim_a.get("source_ids")
+        ids_b = claim_b.get("source_ids")
+        clean_a = (
+            [sid for sid in ids_a if isinstance(sid, str) and sid in allowed_ids]
+            if isinstance(ids_a, list)
+            else []
+        )
+        clean_b = (
+            [sid for sid in ids_b if isinstance(sid, str) and sid in allowed_ids]
+            if isinstance(ids_b, list)
+            else []
+        )
+        if not isinstance(text_a, str) or not text_a.strip() or not clean_a:
+            continue
+        if not isinstance(text_b, str) or not text_b.strip() or not clean_b:
+            continue
+        unresolved = it.get("unresolved")
+        out.append(
+            {
+                "id": f"C{len(out) + 1}",
+                "kind": kind,
+                "topic": str(it.get("topic") or "Disagreement").strip(),
+                "claim_a": {"text": text_a.strip(), "source_ids": clean_a},
+                "claim_b": {"text": text_b.strip(), "source_ids": clean_b},
+                "explanation": str(it.get("explanation") or "").strip(),
+                "unresolved": (
+                    unresolved.strip()
+                    if isinstance(unresolved, str) and unresolved.strip()
+                    else None
+                ),
+            }
+        )
     return out
