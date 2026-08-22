@@ -20,7 +20,7 @@ from lumen.pipeline.embed import embed_texts
 from lumen.pipeline.fetch import fetch_url
 from lumen.pipeline.retrieve import retrieve
 from lumen.pipeline.search import search_web
-from lumen.pipeline.synthesize import iter_synthesize_report, synthesize_report
+from lumen.pipeline.synthesize import iter_synthesize_report
 from lumen.retrieval.chroma_store import upsert_chunks
 
 _MAX_FETCH_URLS = 5
@@ -45,6 +45,23 @@ class ResearchResult:
     citations: list[dict[str, Any]]
     contradictions: list[dict[str, Any]]
     uncertainty_notes: list[str]
+
+
+@dataclass(frozen=True)
+class ResearchToken:
+    """One streamed report fragment."""
+
+    text: str
+
+
+@dataclass(frozen=True)
+class ResearchComplete:
+    """Structured sidecars and final report from the same research run."""
+
+    result: ResearchResult
+
+
+ResearchStreamEvent = ResearchToken | ResearchComplete
 
 
 @dataclass
@@ -130,35 +147,52 @@ def _prepare(request: ResearchRequest) -> _Prepared:
     )
 
 
-def run_research(request: ResearchRequest) -> ResearchResult:
-    """Execute full pipeline and return a structured result."""
+def iter_research(request: ResearchRequest) -> Iterator[ResearchStreamEvent]:
+    """Stream report fragments and finish with metadata from the same run."""
     prep = _prepare(request)
     if not prep.passages:
-        return ResearchResult(
+        report = "No sources available to synthesize an answer."
+        yield ResearchToken(f"{report}\n")
+        for note in prep.uncertainty_notes:
+            yield ResearchToken(f"\n*Note:* {note}\n")
+        yield ResearchComplete(
+            ResearchResult(
+                session_id=request.session_id,
+                report_markdown=report,
+                citations=prep.citations,
+                contradictions=prep.contradictions,
+                uncertainty_notes=prep.uncertainty_notes,
+            )
+        )
+        return
+
+    report_parts: list[str] = []
+    for piece in iter_synthesize_report(
+        request.question, prep.passages, settings=get_settings()
+    ):
+        report_parts.append(piece)
+        yield ResearchToken(piece)
+    yield ResearchComplete(
+        ResearchResult(
             session_id=request.session_id,
-            report_markdown="No sources available to synthesize an answer.",
+            report_markdown="".join(report_parts),
             citations=prep.citations,
             contradictions=prep.contradictions,
             uncertainty_notes=prep.uncertainty_notes,
         )
-
-    report = synthesize_report(request.question, prep.passages, settings=get_settings())
-    return ResearchResult(
-        session_id=request.session_id,
-        report_markdown=report,
-        citations=prep.citations,
-        contradictions=prep.contradictions,
-        uncertainty_notes=prep.uncertainty_notes,
     )
 
 
-def iter_research_report_markdown(request: ResearchRequest) -> Iterator[str]:
-    """Stream synthesized markdown after retrieval (same pipeline as ``run_research``)."""
-    prep = _prepare(request)
-    if not prep.passages:
-        yield "No sources available to synthesize an answer.\n"
-        for note in prep.uncertainty_notes:
-            yield f"\n*Note:* {note}\n"
-        return
+def run_research(request: ResearchRequest) -> ResearchResult:
+    """Execute the shared research stream and return its final result."""
+    for event in iter_research(request):
+        if isinstance(event, ResearchComplete):
+            return event.result
+    raise RuntimeError("research stream ended without a final result")
 
-    yield from iter_synthesize_report(request.question, prep.passages, settings=get_settings())
+
+def iter_research_report_markdown(request: ResearchRequest) -> Iterator[str]:
+    """Compatibility iterator for callers that only consume report text."""
+    for event in iter_research(request):
+        if isinstance(event, ResearchToken):
+            yield event.text

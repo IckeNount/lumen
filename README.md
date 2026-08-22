@@ -21,7 +21,7 @@ The local MCP evidence path is implemented and covered by regression tests. Fast
 - A complete evaluation runner and representative quality baselines are not included.
 - Production observability and distributed tracing.
 - Authentication and authorization for public service access, rate limiting, retention/cleanup policies for Chroma collections, and broader operational hardening.
-- Hosted deployment configuration and verification.
+- Deployment verification beyond the included Vercel/Railway configuration.
 - Production-scale crawling, caching, retries, and search-provider resilience.
 
 Host-model synthesis is intentionally outside Lumen's canonical MCP tool. It is an architectural boundary, not a missing MCP feature.
@@ -119,6 +119,25 @@ npm run dev
 ```
 
 The API exposes `GET /health`, `POST /api/v1/research`, and `POST /api/v1/research/stream`. The frontend runs at `http://127.0.0.1:5173/` by default and calls the API at `http://127.0.0.1:8000/`.
+
+## Vercel and Railway deployment
+
+The hosted demo keeps the secondary HTTP architecture intact:
+
+```text
+Browser -> Vercel (Vite frontend and same-origin rewrites) -> Railway (FastAPI)
+        -> legacy research pipeline -> streamed report and evidence sidecars
+```
+
+Create the Railway service from the repository root. Railpack detects the root `requirements.txt`, so no custom build command is required. `railpack.json` starts `lumen.api.app:app` on `0.0.0.0:$PORT`, while `railway.json` configures the same Railway start command and `GET /health` deployment healthcheck. Add a Railway volume mounted at `/data` and set `CHROMA_PERSIST_DIRECTORY` to `/data/chroma`; local development continues to use `./data/chroma` from `.env.example`.
+
+The Railway service needs backend-only configuration for its OpenAI-compatible chat endpoint, search provider, and Chroma path. For the existing OpenRouter setup, configure `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `LUMEN_CHAT_MODEL`, `LUMEN_USE_MOCK_EMBEDDINGS`, `TAVILY_API_KEY` (or `SERPER_API_KEY`), and `CHROMA_PERSIST_DIRECTORY`. Railway supplies `PORT`; do not set it manually. No secret belongs in a `VITE_*` variable.
+
+Create the Vercel project with `frontend` as its Root Directory. Vercel detects Vite and runs the existing production build. Set the server-side Vercel variable `RAILWAY_BACKEND_URL` to the Railway public service origin. `frontend/vercel.mjs` forwards `/health` and `/api/*` to Railway, so the browser continues to use same-origin relative paths and no CORS configuration is needed.
+
+The streaming endpoint returns report tokens followed by citations, contradictions, and uncertainty from the same research run. The frontend no longer repeats the expensive pipeline solely to obtain metadata.
+
+This configuration supports a small hosted deployment. It has not been verified against live Vercel or Railway accounts and does not add public authentication, rate limiting, production observability, or automated Chroma retention.
 
 ## Repository layout
 

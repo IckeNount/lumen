@@ -28,7 +28,13 @@ export type ResearchMetadata = {
 type StreamEvent =
   | { type: "meta"; session_id?: string }
   | { type: "token"; text?: string }
-  | { type: "done" };
+  | {
+      type: "done";
+      session_id?: string;
+      citations?: Citation[];
+      contradictions?: Contradiction[];
+      uncertainty_notes?: string[];
+    };
 
 export class LumenApiError extends Error {
   constructor(
@@ -79,7 +85,7 @@ export async function streamResearch(
   request: ResearchRequest,
   onToken: (token: string) => void,
   signal?: AbortSignal,
-): Promise<void> {
+): Promise<ResearchMetadata> {
   const response = await fetch("/api/v1/research/stream", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -97,6 +103,22 @@ export async function streamResearch(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let metadata: ResearchMetadata | undefined;
+
+  const handleEvent = (event: StreamEvent) => {
+    if (event.type === "token" && event.text) {
+      onToken(event.text);
+    }
+    if (event.type === "done") {
+      metadata = {
+        session_id: event.session_id ?? request.session_id,
+        report_markdown: "",
+        citations: event.citations ?? [],
+        contradictions: event.contradictions ?? [],
+        uncertainty_notes: event.uncertainty_notes ?? [],
+      };
+    }
+  };
 
   while (true) {
     const { value, done } = await reader.read();
@@ -112,9 +134,7 @@ export async function streamResearch(
       if (!item.ok) {
         throw new LumenApiError(`Malformed stream event: ${item.line}`);
       }
-      if (item.value.type === "token" && item.value.text) {
-        onToken(item.value.text);
-      }
+      handleEvent(item.value);
     }
   }
 
@@ -122,10 +142,13 @@ export async function streamResearch(
     if (!item.ok) {
       throw new LumenApiError(`Malformed stream event: ${item.line}`);
     }
-    if (item.value.type === "token" && item.value.text) {
-      onToken(item.value.text);
-    }
+    handleEvent(item.value);
   }
+
+  if (!metadata) {
+    throw new LumenApiError("Research stream ended without metadata.");
+  }
+  return metadata;
 }
 
 export async function fetchResearchMetadata(

@@ -55,6 +55,7 @@ logs/
 node_modules/
 frontend/dist/
 frontend/coverage/
+.vercel/
 
 # Model caches (if any local downloads)
 .cache/

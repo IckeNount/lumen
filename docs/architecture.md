@@ -106,6 +106,12 @@ FastAPI is preserved as a secondary interface in `src/lumen/api/app.py`:
 
 The React Research Console consumes this interface. This older path uses `pipeline/orchestrator.py`, has a reusable session-named Chroma collection, and includes decomposition, contradiction detection, and report synthesis through an OpenAI-compatible chat client. It is separate from `research_evidence`, does not inherit the Codex host's ChatGPT authentication, and is not the default architecture.
 
+For the hosted deployment, Vercel serves the compiled Vite frontend and forwards the frontend's existing relative `/health` and `/api/*` requests to FastAPI on Railway. This same-origin proxy keeps backend credentials out of the frontend and avoids adding a CORS layer. Railway runs the existing FastAPI adapter; it does not replace or modify the canonical local stdio MCP path.
+
+The HTTP streaming adapter consumes one shared orchestrator run. It sends report fragments as `token` events and citations, contradictions, and uncertainty as the final `done` event. The browser therefore does not invoke the research pipeline again to obtain sidecar metadata.
+
+Chroma's persistence directory remains environment-configurable. Local development defaults to `./data/chroma`; the hosted demo mounts a Railway volume at `/data` and uses `/data/chroma`. Persistent storage prevents loss on Railway redeploys, while collection retention and cleanup remain deferred.
+
 Keeping FastAPI avoids breaking the existing frontend and API consumers. New evidence-host integration should target MCP unless compatibility with an existing HTTP consumer is required.
 
 ## Implemented versus deferred
@@ -122,7 +128,7 @@ Keeping FastAPI avoids breaking the existing frontend and API consumers. New evi
 
 - An evaluation runner and quality baselines are not included.
 - Production tracing and observability are not implemented.
-- Hosted deployment configuration and verification are not included.
+- Vercel/Railway deployment configuration is included, but live deployment verification is not complete.
 - Public authentication, authorization, rate limiting, Chroma lifecycle management, secret management, and production monitoring are not complete.
 - The pipeline does not yet provide production crawling, caching, comprehensive retry policy, or search-service failover beyond its current fixed priority.
 

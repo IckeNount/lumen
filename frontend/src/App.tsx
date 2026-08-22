@@ -9,6 +9,7 @@ import {
   streamResearch,
   type Citation,
   type Contradiction,
+  type ResearchMetadata,
   type ResearchRequest,
 } from "./api/lumenClient";
 import { createSessionId } from "./lib/session";
@@ -79,6 +80,16 @@ export default function App() {
     setMetadataMessage("");
   };
 
+  const applyMetadata = (metadata: ResearchMetadata) => {
+    setCitations(metadata.citations ?? []);
+    setContradictions(metadata.contradictions ?? []);
+    setUncertaintyNotes(metadata.uncertainty_notes ?? []);
+    if (!reportRef.current && metadata.report_markdown) {
+      reportRef.current = metadata.report_markdown;
+      setReportMarkdown(metadata.report_markdown);
+    }
+  };
+
   const loadMetadata = async (
     researchRequest: ResearchRequest,
     signal?: AbortSignal,
@@ -86,13 +97,7 @@ export default function App() {
     setRequestStatus("fetchingMetadata");
     try {
       const metadata = await fetchResearchMetadata(researchRequest, signal);
-      setCitations(metadata.citations ?? []);
-      setContradictions(metadata.contradictions ?? []);
-      setUncertaintyNotes(metadata.uncertainty_notes ?? []);
-      if (!reportRef.current && metadata.report_markdown) {
-        reportRef.current = metadata.report_markdown;
-        setReportMarkdown(metadata.report_markdown);
-      }
+      applyMetadata(metadata);
       setRequestStatus("complete");
     } catch (error) {
       if (signal?.aborted) {
@@ -125,7 +130,7 @@ export default function App() {
     setRequestStatus("streaming");
 
     try {
-      await streamResearch(
+      const metadata = await streamResearch(
         request,
         (token) => {
           reportRef.current += token;
@@ -133,7 +138,8 @@ export default function App() {
         },
         controller.signal,
       );
-      await loadMetadata(request, controller.signal);
+      applyMetadata(metadata);
+      setRequestStatus("complete");
     } catch (error) {
       if (controller.signal.aborted) {
         setRequestStatus("cancelled");

@@ -12,8 +12,10 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from lumen.pipeline.orchestrator import (
+    ResearchComplete,
     ResearchRequest,
-    iter_research_report_markdown,
+    ResearchToken,
+    iter_research,
     run_research,
 )
 
@@ -63,9 +65,21 @@ def create_app() -> FastAPI:
         def ndjson_chunks() -> Any:
             prep_meta = {"type": "meta", "session_id": body.session_id}
             yield json.dumps(prep_meta, ensure_ascii=False) + "\n"
-            for piece in iter_research_report_markdown(req):
-                yield json.dumps({"type": "token", "text": piece}, ensure_ascii=False) + "\n"
-            yield json.dumps({"type": "done"}, ensure_ascii=False) + "\n"
+            for event in iter_research(req):
+                if isinstance(event, ResearchToken):
+                    payload: dict[str, Any] = {"type": "token", "text": event.text}
+                elif isinstance(event, ResearchComplete):
+                    result = event.result
+                    payload = {
+                        "type": "done",
+                        "session_id": result.session_id,
+                        "citations": result.citations,
+                        "contradictions": result.contradictions,
+                        "uncertainty_notes": result.uncertainty_notes,
+                    }
+                else:  # pragma: no cover - closed event union
+                    continue
+                yield json.dumps(payload, ensure_ascii=False) + "\n"
 
         return StreamingResponse(
             ndjson_chunks(),
