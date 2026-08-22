@@ -134,6 +134,18 @@ returned Vercel `NOT_FOUND`, proving this was not propagation delay.
 - [x] Update the deployment documentation to name `frontend/vercel.json`.
 - [ ] Run the complete checks, commit, push, and verify production again.
 
+### Task 4: Support both deployed Vercel root layouts
+
+The `lumen-research-copilot` project was redeployed after the environment
+variable was configured, but the project still ignored the repository-root
+configuration. Retain identical config files at both possible Vercel discovery
+roots because the connected projects use different root-directory layouts.
+
+- [x] Add `frontend/vercel.json` without removing the repository-root file.
+- [x] Parameterize the regression test over both config locations.
+- [x] Document why the duplicate deployment files are required.
+- [ ] Run the complete checks, commit, push, and verify production again.
+
 ### Task 3: Place configuration at the deployed project root
 
 The production deployment also ignored `frontend/vercel.json`. Because the
