@@ -76,4 +76,29 @@ describe("streamResearch", () => {
       ),
     ).rejects.toThrow("without a result");
   });
+
+  it("reports an outdated backend instead of forwarding legacy events", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          [
+            '{"type":"meta","session_id":"legacy"}',
+            '{"type":"token","text":"old report"}',
+            '{"type":"done","citations":[],"contradictions":[],"uncertainty_notes":[]}',
+            "",
+          ].join("\n"),
+        ),
+      ),
+    );
+    const onEvent = vi.fn();
+
+    await expect(
+      streamResearch(
+        { session_id: "s", question: "q", max_subqueries: 1 },
+        onEvent,
+      ),
+    ).rejects.toThrow("backend is out of date");
+    expect(onEvent).not.toHaveBeenCalled();
+  });
 });

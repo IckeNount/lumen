@@ -141,7 +141,41 @@ export async function streamResearch(
   let buffer = "";
   let result: ResearchResult | undefined;
 
-  const handleEvent = (event: ResearchEvent) => {
+  const handleEvent = (value: unknown) => {
+    if (!value || typeof value !== "object" || !("type" in value)) {
+      throw new LumenApiError("Malformed research stream event.");
+    }
+    const type = String(value.type);
+    if (type === "meta" || type === "token") {
+      return;
+    }
+    if (
+      ![
+        "run_started",
+        "stage",
+        "source_found",
+        "report_block",
+        "done",
+        "error",
+      ].includes(type)
+    ) {
+      return;
+    }
+    if (type === "done") {
+      const legacy = value as { result?: Partial<ResearchResult> };
+      if (
+        !legacy.result ||
+        !Array.isArray(legacy.result.sources) ||
+        !Array.isArray(legacy.result.key_findings) ||
+        typeof legacy.result.report_markdown !== "string"
+      ) {
+        throw new LumenApiError(
+          "The research backend is out of date. Redeploy it and try again.",
+        );
+      }
+    }
+
+    const event = value as ResearchEvent;
     onEvent(event);
     if (event.type === "done") {
       result = event.result;
@@ -155,7 +189,7 @@ export async function streamResearch(
     if (done) {
       break;
     }
-    const parsed = consumeNdjson<ResearchEvent>(
+    const parsed = consumeNdjson<unknown>(
       buffer,
       decoder.decode(value, { stream: true }),
     );
@@ -168,7 +202,7 @@ export async function streamResearch(
     }
   }
 
-  for (const item of flushNdjson<ResearchEvent>(buffer + decoder.decode())) {
+  for (const item of flushNdjson<unknown>(buffer + decoder.decode())) {
     if (!item.ok) {
       throw new LumenApiError(`Malformed stream event: ${item.line}`);
     }

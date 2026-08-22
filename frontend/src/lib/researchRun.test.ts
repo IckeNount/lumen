@@ -89,4 +89,14 @@ describe("researchRunReducer", () => {
     expect(cancelled.status).toBe("cancelled");
     expect(cancelled.sources).toEqual([source]);
   });
+
+  it("preserves state when a newer or legacy event is unknown", () => {
+    const state = researchRunReducer(initialResearchRunState, { type: "started" });
+    const next = researchRunReducer(state, {
+      type: "event",
+      event: { type: "meta", session_id: "legacy" } as never,
+    });
+
+    expect(next).toBe(state);
+  });
 });

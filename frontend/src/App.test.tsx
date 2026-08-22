@@ -119,4 +119,26 @@ describe("App", () => {
     expect(screen.getByText("Alpha study")).toBeInTheDocument();
     expect(screen.getByText("Research failed during this stage.")).toBeInTheDocument();
   });
+
+  it("shows a safe error when the deployed backend still uses the old stream", async () => {
+    const legacy = [
+      { type: "meta", session_id: "legacy" },
+      { type: "token", text: "old report" },
+      { type: "done", citations: [], contradictions: [], uncertainty_notes: [] },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        urlOf(input) === "/health"
+          ? new Response(JSON.stringify({ status: "ok" }))
+          : new Response(`${legacy.map((event) => JSON.stringify(event)).join("\n")}\n`),
+      ),
+    );
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Run research" }));
+
+    expect(await screen.findByRole("heading", { name: "Research interrupted" })).toBeInTheDocument();
+    expect(screen.getByText(/backend is out of date/i)).toBeInTheDocument();
+  });
 });

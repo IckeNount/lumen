@@ -96,5 +96,7 @@ export function researchRunReducer(
       };
     case "error":
       return { ...state, status: "error", errorMessage: event.message };
+    default:
+      return state;
   }
 }
